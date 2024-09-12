@@ -1,19 +1,13 @@
 const express = require('express');
-const bodyParser = require('body-parser');
-const { Pool } = require('pg');
-
-require('dotenv').config();
-const app = express();
-
-const port = process.env.PORT || 3000;
-
-app.use(bodyParser.json());
+const {Pool} = require("pg");
+const router = express.Router();
 
 const pool = new Pool({
     connectionString: process.env.POSTGRES_URL,
 });
 
-app.get('/exams', async (req, res) => {
+
+router.get('/exams', async (req, res) => {
     try {
         const result = await pool.query('SELECT * FROM exam_classes');
         res.json(result.rows);
@@ -23,7 +17,7 @@ app.get('/exams', async (req, res) => {
     }
 });
 
-app.get('/modules', async (req, res) => {
+router.get('/modules', async (req, res) => {
     try {
         const result = await pool.query('SELECT * FROM modules');
         res.json(result.rows);
@@ -34,7 +28,7 @@ app.get('/modules', async (req, res) => {
 });
 
 
-app.get('/questions/count', async (req, res) => {
+router.get('/questions/count', async (req, res) => {
     const { exam_id, module_id } = req.query;
     try {
         const sendResponse = async (query, params) => {
@@ -61,7 +55,7 @@ app.get('/questions/count', async (req, res) => {
     }
 });
 
-app.get('/questions', async (req, res) => {
+router.get('/questions', async (req, res) => {
     const { exam_id, module_id, limit } = req.query;
     try {
         const sendResponse = async (query, params) => {
@@ -86,8 +80,7 @@ app.get('/questions', async (req, res) => {
         console.error(err);
         res.status(500).json({error: 'Internal Server Error'});
     }
-});
+})
 
-app.listen(port, () => {
-    console.log(`Server is running on port ${port}`);
-});
+
+module.exports = router;
