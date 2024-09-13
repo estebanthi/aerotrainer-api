@@ -29,11 +29,16 @@ router.get('/modules', async (req, res) => {
 
 
 router.get('/questions/count', async (req, res) => {
-    const { exam_id, module_id } = req.query;
+    const { exam_id, module_id, collection_id } = req.query;
     try {
         const sendResponse = async (query, params) => {
             const result = await pool.query(query, params);
             res.json(parseInt(result.rows[0].count));
+        }
+        if (collection_id) {
+            const query = 'SELECT COUNT(*) FROM collection_questions WHERE collection_id = $1';
+            await sendResponse(query, [collection_id]);
+            return
         }
         if (module_id) {
             const query = 'SELECT COUNT(*) FROM question_associations WHERE module_id = $1';
@@ -56,11 +61,16 @@ router.get('/questions/count', async (req, res) => {
 });
 
 router.get('/questions', async (req, res) => {
-    const { exam_id, module_id, limit } = req.query;
+    const { exam_id, module_id, collection_id, limit } = req.query;
     try {
         const sendResponse = async (query, params) => {
             const result = await pool.query(query, params);
             res.json(result.rows);
+        }
+        if (collection_id) {
+            const query = 'SELECT * FROM questions WHERE no_question IN (SELECT no_question FROM collection_questions WHERE collection_id = $1) ORDER BY RANDOM() LIMIT $2';
+            await sendResponse(query, [collection_id, limit]);
+            return
         }
         if (module_id) {
             const query = 'SELECT * FROM questions WHERE no_question IN (SELECT no_question FROM question_associations WHERE module_id = $1) ORDER BY RANDOM() LIMIT $2';
@@ -76,6 +86,16 @@ router.get('/questions', async (req, res) => {
             const query = 'SELECT * FROM questions ORDER BY RANDOM() LIMIT $1';
             await sendResponse(query, [limit]);
         }
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({error: 'Internal Server Error'});
+    }
+})
+
+router.get('/collections', async (req, res) => {
+    try {
+        const result = await pool.query('SELECT * FROM collection');
+        res.json(result.rows);
     } catch (err) {
         console.error(err);
         res.status(500).json({error: 'Internal Server Error'});
