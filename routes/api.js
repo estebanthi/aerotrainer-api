@@ -62,11 +62,17 @@ router.get('/questions/count', async (req, res) => {
 });
 
 router.get('/questions', async (req, res) => {
-    const { exam_id, module_id, collection_id, limit } = req.query;
+    const { exam_id, module_id, collection_id, limit, questions } = req.query;
     try {
         const sendResponse = async (query, params) => {
             const result = await pool.query(query, params);
             res.json(result.rows);
+        }
+        if (questions) {
+            const ids = questions.split(',').map(Number);
+            const query = `SELECT * FROM questions WHERE no_question = ANY($1)`;
+            await sendResponse(query, [ids]);
+            return
         }
         if (collection_id) {
             const query = 'SELECT * FROM questions WHERE no_question IN (SELECT no_question FROM collection_questions WHERE collection_id = $1) ORDER BY RANDOM() LIMIT $2';
@@ -103,9 +109,21 @@ router.get('/collections', async (req, res) => {
     }
 })
 
-router.get('/users', async (req, res) => {
+router.post('/history', async (req, res) => {
+    const {user_email, exam_id, module_id, collection_id, questions, answers, score} = req.body;
     try {
-        const result = await pool.query('SELECT * FROM users');
+        const result = await pool.query('INSERT INTO history (user_email, exam_id, module_id, collection_id, questions, answers, score) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *', [user_email, exam_id, module_id, collection_id, questions, answers, score]);
+        res.json(result.rows[0]);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({error: 'Internal Server Error'});
+    }
+})
+
+router.get('/history', async (req, res) => {
+    const {user_email} = req.query;
+    try {
+        const result = await pool.query('SELECT * FROM history WHERE user_email = $1', [user_email]);
         res.json(result.rows);
     } catch (err) {
         console.error(err);
@@ -113,48 +131,26 @@ router.get('/users', async (req, res) => {
     }
 })
 
-router.post('/register', async (req, res) => {
-    const {email, password} = req.body;
-    try {
-        if (!email || !password) {
-            res.status(400).json({error: 'Email ou mot de passe manquant'});
-            return;
-        }
-
-        const result = await pool.query('SELECT * FROM users WHERE username = $1', [email]);
-        if (result.rows.length > 0) {
-            res.status(400).json({error: 'Email déjà utilisé'});
-            return;
-        }
-
-        const hashedPassword = await hash(password, 10);
-        await pool.query('INSERT INTO users (username, password) VALUES ($1, $2)', [email, hashedPassword]);
-        res.status(201).json({message: 'User created successfully'});
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({error: 'Erreur interne du serveur'});
+router.get('/init', async (req, res) => {
+    const appSecret = process.env.APP_SECRET;
+    const {secret} = req.query;
+    if (secret !== appSecret) {
+        res.status(403).json({error: 'Forbidden'});
+        return
     }
-});
-
-router.post('/login', async (req, res) => {
-    const {username, password} = req.body;
     try {
-        const result = await pool.query('SELECT * FROM users WHERE username = $1', [username]);
-        if (result.rows.length === 0) {
-            res.status(401).json({error: 'Invalid credentials'});
-            return;
-        }
-        const user = result.rows[0];
-        if (await compare(password, user.password)) {
-            res.status(200).json({id: user.id, username: user.username});
-        } else {
-            res.status(401).json({error: 'Invalid credentials'});
-        }
+        const result = await pool.query('CREATE TABLE IF NOT EXISTS exam_classes (id SERIAL PRIMARY KEY, name VARCHAR(255) NOT NULL)');
+        await pool.query('CREATE TABLE IF NOT EXISTS modules (id SERIAL PRIMARY KEY, name VARCHAR(255) NOT NULL)');
+        await pool.query('CREATE TABLE IF NOT EXISTS questions (no_question SERIAL PRIMARY KEY, question VARCHAR(255) NOT NULL, answer VARCHAR(255) NOT NULL)');
+        await pool.query('CREATE TABLE IF NOT EXISTS question_associations (id SERIAL PRIMARY KEY, exam_class_id INT NOT NULL, module_id INT NOT NULL, no_question INT NOT NULL)');
+        await pool.query('CREATE TABLE IF NOT EXISTS collection (id SERIAL PRIMARY KEY, name VARCHAR(255) NOT NULL)');
+        await pool.query('CREATE TABLE IF NOT EXISTS collection_questions (id SERIAL PRIMARY KEY, collection_id INT NOT NULL, no_question INT NOT NULL)');
+        await pool.query('CREATE TABLE IF NOT EXISTS history (id SERIAL PRIMARY KEY, user_email VARCHAR(255) NOT NULL, exam_id INT NOT NULL, module_id INT, collection_id INT, questions INT[] NOT NULL, answers text[] NOT NULL, score FLOAT NOT NULL, datetime TIMESTAMP DEFAULT CURRENT_TIMESTAMP)');
+        res.json({message: 'Database initialized'});
     } catch (err) {
         console.error(err);
         res.status(500).json({error: 'Internal Server Error'});
     }
-});
-
+})
 
 module.exports = router;
